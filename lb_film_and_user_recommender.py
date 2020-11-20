@@ -239,7 +239,7 @@ top20 = get_top_good_users(fellow_raters_sorted, 20)
 for result in top20:
     print(result[0],':', result[1])
 
-recommended_films, obscure_recommended_films, really_obscure_reommended_films = get_film_recommendations(top20, myprofile, 50)
+recommended_films, obscure_recommended_films, really_obscure_recommended_films = get_film_recommendations(top20, myprofile, 50)
 
 print('Recommended Films:')
 for filmandscore in recommended_films:
@@ -250,5 +250,5 @@ for filmandscore in obscure_recommended_films:
     print(filmandscore)
 
 print('Really Obscure Recommended Films:')
-for filmandscore in really_obscure_reommended_films:
+for filmandscore in really_obscure_recommended_films:
     print(filmandscore)
