@@ -182,7 +182,7 @@ def get_film_recommendations(similar_users, my_profile, num_of_recs):
     all_found_films = {}
     recommended_films = []
     obscure_recommended_films = []
-    really_obscure_reommended_films = []
+    really_obscure_recommended_films = []
 
     for result in similar_users:
         username = re.findall('https://letterboxd.com/(.+)', result[0])[0]
@@ -202,20 +202,21 @@ def get_film_recommendations(similar_users, my_profile, num_of_recs):
         ouractivity = urllib.request.urlopen('https://letterboxd.com/%s/film/%s/activity/' % (my_profile, film[0]))
         activity_str = str(list(ouractivity))
         if len(re.findall('"activity-summary"', activity_str)) == 0:
-            recommended_films.append('https://letterboxd.com/film/%s: %d' % (film[0], film[1]))
+            if len(recommended_films) < num_of_recs:
+                recommended_films.append('https://letterboxd.com/film/%s: %d' % (film[0], film[1]))
             main_page = urllib.request.urlopen('https://letterboxd.com/film/%s/' % film[0])
             main_page = str(list(main_page))
             try:
                 ratingcount = int(re.findall('"ratingCount":(.+?),"worstRating"', main_page)[0])
             except:
                 ratingcount = 0
-            if 1000 <= ratingcount < 10000:
+            if (1000 <= ratingcount < 10000) and (len(obscure_recommended_films) < num_of_recs):
                 obscure_recommended_films.append('https://letterboxd.com/film/%s: %d' % (film[0], film[1]))
-            if ratingcount < 1000:
-                really_obscure_reommended_films.append('https://letterboxd.com/film/%s: %d' % (film[0], film[1]))
-        if len(recommended_films) == num_of_recs:
+            if (ratingcount < 1000) and (len(really_obscure_recommended_films) < num_of_recs):
+                really_obscure_recommended_films.append('https://letterboxd.com/film/%s: %d' % (film[0], film[1]))
+        if (len(recommended_films) and len(obscure_recommended_films) and len(really_obscure_recommended_films)) == num_of_recs:
             break
-    return (recommended_films, obscure_recommended_films, really_obscure_reommended_films)
+    return (recommended_films, obscure_recommended_films, really_obscure_recommended_films)
 
 ########################################################################################################################
 
