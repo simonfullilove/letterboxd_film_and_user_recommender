@@ -1,6 +1,22 @@
 import urllib.request, urllib.parse, urllib.error
+import http
 import re
 import math
+
+def webpage_to_string(url):
+    """
+    Returns a string of the raw HTML for an entire web page.
+
+    :param url: (string or HTTPResponse object') The URL of the website as a string, or an HTTPResponse object (part of
+    the http library) that has been requested before being passed as an argument. This function handles either.
+    :return: (string) A string of the raw HTML for the URL provided.
+    """
+    if isinstance(url, str):
+        return str(list(urllib.request.urlopen(url)))
+    elif isinstance(url, http.client.HTTPResponse):
+        return str(list(url))
+    else:
+        return 'Error: URL provided is not a string or an HTTPResponse object'
 
 def get_users_scores(user, score):
     """
@@ -8,10 +24,10 @@ def get_users_scores(user, score):
 
     :param user: (string) letterboxd username whose ratings you want to get.
     :param score: (string) the rating you want to get films for, e.g. '4' or '4.5'.
-    :return: array of films that the user has given the specified score
+    :return: (list) a list of films that the user has given the specified score
     """
     found_films = []
-    score_dict = {
+    score_dict_for_url = {
         '0': 'none',
         '0.5': '%C2%BD',
         '1': '1',
@@ -24,116 +40,96 @@ def get_users_scores(user, score):
         '4.5': '4%C2%BD',
         '5': '5'
     }
-    print('Searching for %s\'s %s star movies...' % (user, score))
-    score = score_dict[score]
+    print(f'Searching for {user}\'s {score} star movies...')
+    score_for_url = score_dict_for_url[score]
+    ratings_page = f'https://letterboxd.com/{user}/films/ratings/rated/{score_for_url}/by/date/page/'
     webpage_number = 0
     while True:
         new_films = []
         webpage_number += 1
-        ratings_page = urllib.request.urlopen('https://letterboxd.com/%s/films/ratings/rated/%s/by/date/page/%d/' % (user, score, webpage_number))
-        for line in ratings_page:
-            for film in re.findall(r'data-film-slug="/film/(.+?)/"', line.decode()):
-                new_films.append(film)
-        if new_films == []:
+        ratings_page_numbered = urllib.request.urlopen(f'{ratings_page}{webpage_number}')
+        for line in ratings_page_numbered:
+            new_films += re.findall(r'data-film-slug="/film/(.+?)/"', line.decode())
+        if not new_films:
             print('Done!')
             break
-        else:
-            found_films.extend(new_films)
+        found_films.extend(new_films)
     return found_films
 
-def get_similar_raters(films, myscore, lowerbound, similar_user_dict):
+def similarity_scorer(my_score, their_score, avg_rating, rating_count):
     """
-    Given a list of films and an original user's score and an acceptable lower boundary, this returns a
-    dictionary of users who also liked these movies and a score for each user, the higher the more similar they are
+    Arbitrary algorithm to give a score based on our original user's rating, the similar user's rating, their
+    difference from the average rating, and the obscurity of the film based on its rating count
+
+    The algorithm is designed as follows:
+    1. Calculates the difference between the average score for a film and the combination of our rating and the
+    similar user's rating (weighted to make their rating slightly more important). The higher the difference, the
+    more unusual it is for us to like this film, resulting in a higher score.
+    2. Takes this difference and multiplies it by 100 over the square root of the number of ratings the film has.
+    This gives us a score that will be very high if the film has very few ratings (because the film is therefore
+    obscure and it is unusual for us to both have seen it) and will be very low if a film has lots of ratings.
+
+    :param my_score: (float) original user's score
+    :param their_score: (float) similar user's score
+    :param avg_rating: (float) the film's average rating
+    :param rating_count: (int) the number of ratings the film has overall
+    :return: (float) returns a float score
+    """
+    return (4 * my_score + 6 * their_score - 10 * avg_rating) * 100 / math.sqrt(rating_count)
+
+def update_similar_raters_dict(films, my_score, lower_bound, similar_user_dict):
+    """
+    Given a list of films and an original user's score and an acceptable lower boundary, this function returns either an
+    updated or newly populated dictionary containing users who also liked the movies in the 'films' list, and a
+    similarity score for each. The higher their score, the more similar they are to us.
 
     :param films: (list) list of films to check for high ratings
-    :param myscore: (int) our original user's rating for the each film in the list of films e.g. '5' or '4.5'
-    :param lowerbound: (int) the lowest rating a user can have given to be considered a similar user e.g. '4' or '3.5'
+    :param my_score: (int) our original user's rating for the each film in the list of films e.g. '5' or '4.5'
+    :param lower_bound: (int or float) the lowest rating a user can have given to be considered a similar user e.g. '4'
+    or '3.5'
     :param similar_user_dict: (dict) a dictionary that will be updated with scores for users who also liked these films
-    :return: a dictionary where keys are users and values are the user's score based on number of liked films etc.
+    :return: (dict) a dictionary where keys are users and values are the user's score based on number of liked films etc.
     """
-    def similarity_scorer(myscore, theirscore, avgrating, ratingcount):
-        """
-        Arbitrary algorithm to give a score based on our original user's rating, the similar user's rating, their
-        difference from the average rating, and the obscurity of the film based on its rating count
-
-        :param myscore: (float) original user's score
-        :param theirscore: (float) similar user's score
-        :param avgrating: (float) the film's average rating
-        :param ratingcount: (int) the number of ratings the film has overall
-        :return: (float) returns a float score
-        """
-        # return (((6 * myscore + 4 * theirscore) - 2 * avgrating) ** 2) * 100 / math.sqrt(ratingcount)
-        return ((4 * myscore + 6 * theirscore) - 10 * avgrating) * (100 / math.sqrt(ratingcount))
-
-    str_score_dict = {
-        0.0: '0',
-        0.5: '0.5',
-        1.0: '1',
-        1.5: '1.5',
-        2.0: '2',
-        2.5: '2.5',
-        3.0: '3',
-        3.5: '3.5',
-        4.0: '4',
-        4.5: '4.5',
-        5.0: '5'
-    }
-
-    totalfilms = len(films)
+    updated_dict = similar_user_dict.copy()
+    total_films = len(films)
     for film in films:
         webpage_number = 0
-        main_page = urllib.request.urlopen('https://letterboxd.com/film/' + film + '/')
-        main_page = str(list(main_page))
+        main_page = webpage_to_string(f'https://letterboxd.com/film/{film}/')
         clean_title = re.findall('data-film-name="(.+?)"', main_page)[0]
-        try:
-            avgrating = float(re.findall('"ratingValue":(.+?),"description"', main_page)[0])
-        except:
-            avgrating = 3
-        try:
-            ratingcount = int(re.findall('"ratingCount":(.+?),"worstRating"', main_page)[0])
-        except:
+        avg_rating = re.findall('"ratingValue":(.+?),"description"', main_page)
+        if avg_rating:
+            avg_rating = float(avg_rating[0])
+        else:
+            avg_rating = 3
+        ratingcount = re.findall('"ratingCount":(.+?),"worstRating"', main_page)
+        if ratingcount:
+            ratingcount = int(ratingcount[0])
+        else:
             ratingcount = 30
 
-        print('Checking high ratings for "%s"...' % clean_title)
+        print(f'Checking high ratings for "{clean_title}"...')
 
         while True:
             webpage_number += 1
-            print('Checking page %d...' % webpage_number)
-            ratings_page = str(list(urllib.request.urlopen('https://letterboxd.com/film/%s/ratings/page/%d/' % (film, webpage_number))))
+            print(f'Checking page {webpage_number}...')
+            ratings_page = webpage_to_string(f'https://letterboxd.com/film/{film}/ratings/page/{webpage_number}/')
             found_something = False
-            x = 5.0
-            while x >= lowerbound:
-                ratings_block = re.findall('<h2><span class="rating rating-large rated-large-' + str(int(x*2)) + '">(.+?)</ul>', ratings_page)
+            rating_to_find = 5.0
+            while rating_to_find >= lower_bound:
+                ratings_block = re.findall(
+                    '<h2><span class="rating rating-large rated-large-' + str(int(rating_to_find * 2)) + '">(.+?)</ul>',
+                    ratings_page)
                 if ratings_block:
                     found_something = True
                     for user in re.findall('href="/(.+?)/"', ratings_block[0]):
-                        scoretoadd = similarity_scorer(myscore, x, avgrating, ratingcount)
-                        similar_user_dict[user] = similar_user_dict.get(user, 0) + scoretoadd
-                x -= 0.5
-            if (found_something == False) and (x < lowerbound):
-                totalfilms -= 1
-                print('"%s" done! %d %s/5 film(s) remaining. \n' % (clean_title, totalfilms, str_score_dict[myscore]))
+                        score_to_add = similarity_scorer(my_score, rating_to_find, avg_rating, ratingcount)
+                        updated_dict[user] = updated_dict.get(user, 0) + score_to_add
+                rating_to_find -= 0.5
+            if (not found_something) and (rating_to_find < lower_bound):
+                total_films -= 1
+                print(f'"{clean_title}" done! {total_films} {my_score:g}/5 film(s) remaining. \n')
                 break
-    return similar_user_dict
-
-def sort_dictionary_into_list(dict, descending=True, sort_by_values=True):
-    """
-    Takes a dictionary and returns a sorted list, sorted by either keys or values, in ascending or descending order.
-
-    :param dict: (dict) dictionary to be sorted
-    :param descending: (bool: default = True) whether to sort in descending order
-    :param swap_keys_values: (bool: default = True) whether to sort by values. If false, sorts by keys instead
-    :return: (list) sorted list
-    """
-    if sort_by_values:
-        res = [(v,k) for k,v in iter(dict.items())]
-        res.sort(reverse=descending)
-        res = [(v,k) for k,v in res]
-    else:
-        res = [(k,v) for k,v in iter(dict.items())]
-        res.sort(reverse=descending)
-    return res
+    return updated_dict
 
 def get_top_good_users(user_list, num_of_results):
     """
@@ -141,26 +137,27 @@ def get_top_good_users(user_list, num_of_results):
     of num_of_results of the top users if they are deemed good users based on certain criteria such as the % of films
     they give 5/5 on letterboxd.com.
 
-    :param user_list: (list) desc sorted list of users and scores - user_list[n][0]=username and user_list[n][0]=userscore
+    :param user_list: (list) desc sorted list of users and scores - user_list[n][0]=username and
+    user_list[n][1]=userscore
     :param num_of_results: (int) max number of good users to get before returning
     :return: (list) list of good users in descending order of score
     """
 
     res = []
     for user, score in user_list:
-        new_entry = ('https://letterboxd.com/%s' % user, '%d' % score)
-        print('Checking %s\'s profile... ' % user)
-        ratings_page = urllib.request.urlopen('https://letterboxd.com/%s/' % user)
-        ratings_str = str(list(ratings_page))
-        try:
-            fives_percentage = int(re.findall(r'/films/ratings/rated/5/by/date/".+?\((.+?)%\)', ratings_str)[0])
-        except:
+        new_entry = (f'https://letterboxd.com/{user}', f'{score}')
+        print(f'Checking {user}\'s profile... ')
+        ratings_str = webpage_to_string(f'https://letterboxd.com/{user}')
+        fives_percentage = re.findall(r'/films/ratings/rated/5/by/date/".+?\((.+?)%\)', ratings_str)
+        if fives_percentage:
+            fives_percentage = int(fives_percentage[0])
+        else:
             fives_percentage = 0
         if fives_percentage <= 15:
             print('They\'re in!')
             res.append(new_entry)
             if len(res) == num_of_results:
-                print('Lads, we have our top %s!:' % str(num_of_results))
+                print(f'Lads, we have our top {num_of_results}!:')
                 break
         else:
             print('This person doesn\'t know how to rate! They\'re out!')
@@ -196,27 +193,27 @@ def get_film_recommendations(similar_users, my_profile, num_of_recs):
         for film in found_four_stars:
             all_found_films[film] = all_found_films.get(film, 0) + 1
 
-    all_found_films = sort_dictionary_into_list(all_found_films)
+    all_found_films = sorted(all_found_films.items(), key=lambda x: x[1], reverse=True)
 
     for film in all_found_films:
-        ouractivity = urllib.request.urlopen('https://letterboxd.com/%s/film/%s/activity/' % (my_profile, film[0]))
-        activity_str = str(list(ouractivity))
-        if len(re.findall('"activity-summary"', activity_str)) == 0:
+        activity_str = webpage_to_string(f'https://letterboxd.com/{my_profile}/film/{film[0]}/activity/')
+        if not re.findall('"activity-summary"', activity_str):
             if len(recommended_films) < num_of_recs:
-                recommended_films.append('https://letterboxd.com/film/%s: %d' % (film[0], film[1]))
-            main_page = urllib.request.urlopen('https://letterboxd.com/film/%s/' % film[0])
-            main_page = str(list(main_page))
-            try:
-                ratingcount = int(re.findall('"ratingCount":(.+?),"worstRating"', main_page)[0])
-            except:
+                recommended_films.append(f'https://letterboxd.com/film/{films[0]} : {film[1]}')
+            main_page = webpage_to_string(f'https://letterboxd.com/film/{film[0]}/')
+            ratingcount = re.findall('"ratingCount":(.+?),"worstRating"', main_page)
+            if ratingcount:
+                ratingcount = int(ratingcount[0])
+            else:
                 ratingcount = 0
             if (1000 <= ratingcount < 10000) and (len(obscure_recommended_films) < num_of_recs):
-                obscure_recommended_films.append('https://letterboxd.com/film/%s: %d' % (film[0], film[1]))
+                obscure_recommended_films.append(f'https://letterboxd.com/film/{films[0]} : {film[1]}')
             if (ratingcount < 1000) and (len(really_obscure_recommended_films) < num_of_recs):
-                really_obscure_recommended_films.append('https://letterboxd.com/film/%s: %d' % (film[0], film[1]))
-        if (len(recommended_films) and len(obscure_recommended_films) and len(really_obscure_recommended_films)) == num_of_recs:
+                really_obscure_recommended_films.append(f'https://letterboxd.com/film/{films[0]} : {film[1]}')
+        if (len(recommended_films) and len(obscure_recommended_films) and len(
+                really_obscure_recommended_films)) == num_of_recs:
             break
-    return (recommended_films, obscure_recommended_films, really_obscure_recommended_films)
+    return recommended_films, obscure_recommended_films, really_obscure_recommended_films
 
 ########################################################################################################################
 
@@ -228,28 +225,27 @@ favourite_films = {
     '4': get_users_scores(myprofile, '4')
 }
 
-# total_films = sum([len(favourite_films[rating]) for rating in favourite_films])
-# print('Total films to check = %s' % total_films)
-
-fellow_raters = {}
+similar_raters = {}
 for rating in favourite_films:
-    fellow_raters = get_similar_raters(favourite_films[rating], float(rating), 4, fellow_raters)
-fellow_raters_sorted = sort_dictionary_into_list(fellow_raters)
+    similar_raters = update_similar_raters_dict(favourite_films[rating], float(rating), 4, similar_raters)
+similar_raters_sorted = sorted(similar_raters.items(), key=lambda x:x[1], reverse=True)
 
-top20 = get_top_good_users(fellow_raters_sorted, 20)
+top20 = get_top_good_users(similar_raters_sorted, 20)
+
 for result in top20:
-    print(result[0],':', result[1])
+    print(result[0], ':', result[1])
 
-recommended_films, obscure_recommended_films, really_obscure_recommended_films = get_film_recommendations(top20, myprofile, 50)
+recommended_films, obscure_recommended_films, really_obscure_recommended_films = get_film_recommendations(top20,
+                                                                                                          myprofile, 5)
 
 print('Recommended Films:')
-for filmandscore in recommended_films:
-    print(filmandscore)
+for film_and_score in recommended_films:
+    print(film_and_score)
 
 print('Kinda Obscure Recommended Films:')
-for filmandscore in obscure_recommended_films:
-    print(filmandscore)
+for film_and_score in obscure_recommended_films:
+    print(film_and_score)
 
 print('Really Obscure Recommended Films:')
-for filmandscore in really_obscure_recommended_films:
-    print(filmandscore)
+for film_and_score in really_obscure_recommended_films:
+    print(film_and_score)
