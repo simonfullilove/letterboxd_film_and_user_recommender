@@ -13,10 +13,9 @@ def webpage_to_string(url):
     """
     if isinstance(url, str):
         return str(list(urllib.request.urlopen(url)))
-    elif isinstance(url, http.client.HTTPResponse):
+    if isinstance(url, http.client.HTTPResponse):
         return str(list(url))
-    else:
-        return 'Error: URL provided is not a string or an HTTPResponse object'
+    return 'Error: URL provided is not a string or an HTTPResponse object'
 
 def get_users_scores(user, score):
     """
@@ -217,35 +216,43 @@ def get_film_recommendations(similar_users, my_profile, num_of_recs):
 
 ########################################################################################################################
 
-myprofile = 'tsar'
+valid_profile = False
+while not valid_profile:
+    myprofile = input("Please enter a Letterboxd username or press Enter to quit: ").strip()
+    if not myprofile:
+        print("Quitting...")
+        break
+    try:
+        urllib.request.urlopen(f'https://letterboxd.com/{myprofile}')
+    except urllib.error.HTTPError:
+        print(f"Invalid profile - https://letterboxd.com/{myprofile} does not exist...")
+        continue
+    valid_profile = True
 
-favourite_films = {
-    '5': get_users_scores(myprofile, '5'),
-    '4.5': get_users_scores(myprofile, '4.5'),
-    '4': get_users_scores(myprofile, '4')
-}
+if valid_profile:
+    favourite_films = {rating: get_users_scores(myprofile, rating) for rating in ['5', '4.5', '4']}
 
-similar_raters = {}
-for rating in favourite_films:
-    similar_raters = update_similar_raters_dict(favourite_films[rating], float(rating), 4, similar_raters)
-similar_raters_sorted = sorted(similar_raters.items(), key=lambda x:x[1], reverse=True)
+    similar_raters = {}
+    for rating in favourite_films:
+        similar_raters = update_similar_raters_dict(favourite_films[rating], float(rating), 4, similar_raters)
+    similar_raters_sorted = sorted(similar_raters.items(), key=lambda x:x[1], reverse=True)
 
-top20 = get_top_good_users(similar_raters_sorted, 20)
+    top20 = get_top_good_users(similar_raters_sorted, 20)
 
-for result in top20:
-    print(result[0], ':', result[1])
+    for result in top20:
+        print(result[0], ':', result[1])
 
-recommended_films, obscure_recommended_films, really_obscure_recommended_films = get_film_recommendations(top20,
-                                                                                                          myprofile, 5)
+    recommended_films, obscure_recommended_films, really_obscure_recommended_films = get_film_recommendations(top20,
+                                                                                                              myprofile, 5)
 
-print('Recommended Films:')
-for film_and_score in recommended_films:
-    print(film_and_score)
+    print('Recommended Films:')
+    for film_and_score in recommended_films:
+        print(film_and_score)
 
-print('Kinda Obscure Recommended Films:')
-for film_and_score in obscure_recommended_films:
-    print(film_and_score)
+    print('Kinda Obscure Recommended Films:')
+    for film_and_score in obscure_recommended_films:
+        print(film_and_score)
 
-print('Really Obscure Recommended Films:')
-for film_and_score in really_obscure_recommended_films:
-    print(film_and_score)
+    print('Really Obscure Recommended Films:')
+    for film_and_score in really_obscure_recommended_films:
+        print(film_and_score)
