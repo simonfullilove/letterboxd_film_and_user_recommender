@@ -1,4 +1,4 @@
-Program to provide a list of users of Letterboxd.com who are similar to a given user, along with lists of films, of varying obscurity, recommended for the user to watch based on the results.
+Script to recommend similar users and films to watch (of various levels of obscurity) based on a user's ratings on letterboxd.com
 
-!!!!!!!!!!! IMPORTANT !!!!!!!!!!!!
-Using this program could cause your IP to be banned from accessing Letterboxd.com due to excessive requests. Use at your own risk.
+
+**Warning, this script scrapes letterboxd aggressively and could get your IP banned from accessing their website. Use at your own risk**
